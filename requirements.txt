@@ -1,0 +1,12 @@
+dotenv
+firecrawl-py
+fpdf
+tqdm
+asyncio
+json
+datetime
+numpy
+matplotlib
+fpdf
+anthropic
+openai

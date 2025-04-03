@@ -1,0 +1,48 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment and virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+.python-version
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Local development configuration
+instance/
+.webassets-cache
+
+# Dependencies
+/node_modules
+
+# Generated files
+*.pdf
+*.txt.gz
+
+# Mac OS specific files
+.DS_Store
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
