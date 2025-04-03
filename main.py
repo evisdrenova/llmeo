@@ -1,6 +1,5 @@
 from llms import call_openai, call_perplexity, call_claude,parse_openai_response,find_rank_in_tools
 from dotenv import load_dotenv
-from mdtext import md_text
 from fpdf import FPDF
 import re
 import asyncio
@@ -12,7 +11,7 @@ from pdf import generate_pdf_report
 
 load_dotenv()
 
-domain = "https://www.neosync.dev"
+domain = "https://www.neon.tech"
 
 
 llm_clients = []
@@ -21,9 +20,14 @@ llm_clients = []
 def extract_keywords(text, top_k=10):
     """
     Use an LLM to suggest the top domain-specific keywords from the text.
+    
+    Args:
+        text: String containing the website content
+        top_k: Number of keywords to extract
     """
-
-    system_prompt = "You are an SEO keyword export who is a master at coming up with the exact keywords that a website wants to rank for in order to increase it's ranking in traditional sources like Google search but also new sources like ChatGPT, Perplexity and Claude."
+    system_prompt = ("You are an SEO keyword expert who is a master at identifying "
+                    "the exact keywords that a website wants to rank for in search engines "
+                    "and AI tools like ChatGPT and Claude.")
 
     prompt = f"""
     Below is text from a website. Please extract the {top_k} most relevant 
@@ -31,17 +35,17 @@ def extract_keywords(text, top_k=10):
     Return them as a comma-separated list with no extra commentary.
 
     Text:
-    {text['markdown']}
+    {text[:5000]}  # Limit text length to avoid token limits
     """
 
     content = call_openai(system_prompt, prompt)
     
-    # Expect a comma-separated list, parse it
+    # Parse the comma-separated list
     keywords = [kw.strip() for kw in content.split(",")]
-
-    print(keywords[:top_k])
     
-    # In case the model returns fewer or more than top_k, prune or handle accordingly
+    print(f"Extracted keywords: {keywords[:top_k]}")
+    
+    # Return top_k keywords
     return keywords[:top_k]
 
 def generate_prompts_llm(keywords, domain_description, prompts_per_keyword=5):
@@ -196,76 +200,43 @@ async def run_llm_queries(prompts, domain, brand_name="Neosync"):
     return results
 
 
-
-# def find_rank_in_response(domain, brand, response_text):
-#     """
-#     Attempt to parse enumerated or bulleted lists for a mention of domain or brand.
-#     If found, try to determine rank (1st, 2nd, etc.).
-#     If not enumerated, look for any mention in paragraphs.
-#     Return either the rank (int) or 'Mentioned (unranked)' or 'Not mentioned'.
-#     """
-#     # Combine domain + brand name for searching
-#     search_terms = [domain.lower(), brand.lower()]
-    
-#     # Split by line
-#     lines = response_text.split('\n')
-#     rank = None
-
-#     # We'll keep track of enumerated item counters
-#     enumerated_counter = 0
-    
-#     for line in lines:
-#         line_clean = line.strip()
-#         # Basic enumerated pattern: "1.", "2)", "- ", "* ", "• " etc.
-#         enum_match = re.match(r"^(\d+)[\.\)]\s+|^[\-\*\•]\s+", line_clean)
-        
-#         if enum_match:
-#             enumerated_counter += 1  # we found a new enumerated bullet
-
-#             # Now check if brand or domain is in this line
-#             if any(term in line_clean.lower() for term in search_terms):
-#                 # If found, the enumerated_counter is effectively the rank
-#                 rank = enumerated_counter
-#                 break
-#         else:
-#             # It's a line not obviously enumerated. We can do a simpler check
-#             # for brand mention.
-#             if any(term in line_clean.lower() for term in search_terms):
-#                 # We'll keep track that it's 'mentioned' but not enumerated
-#                 rank = "Mentioned (unranked)"
-#                 # Keep scanning in case we find an enumerated mention further down
-    
-#     if not rank:
-#         rank = "Not mentioned"
-
-#     return rank
-
 async def main(domain, max_pages=10, output_file="llm_ranking_report.pdf"):
     """Main function to run the entire workflow."""
     # Extract domain name for brand searching
     brand_name = domain.replace("https://", "").replace("http://", "").replace("www.", "").split('.')[0]
     brand_name = brand_name.capitalize()
-    
+
+
+    print("brand", brand_name)
+
     # 1. Scrape website content or use provided content
     print("\n--- Step 1: Getting Website Content ---")
     try:
         # Use md_text if it's already imported and available
-        if 'md_text' in globals() and isinstance(md_text, dict) and 'markdown' in md_text:
-            website_content = md_text
-            print("Using pre-loaded website content")
-        else:
-            website_content = scrape_website(domain, max_pages)
+        # if 'md_text' in globals() and isinstance(md_text, dict) and 'markdown' in md_text:
+        #     website_content = md_text
+        #     print("Using pre-loaded website content")
+        # else:
+        website_content = scrape_website(domain, max_pages)
+
+        print("websitecontn", website_content)
         
-        if not website_content or not website_content.get('markdown'):
+        # Check if website_content is already a string or a dict with 'markdown' key
+        if isinstance(website_content, dict) and 'markdown' in website_content:
+            markdown_content = website_content['markdown']
+        elif isinstance(website_content, str):
+            markdown_content = website_content
+        else:
             print("Failed to get website content. Using example data.")
-            website_content = {'markdown': 'Example website content'}
+            markdown_content = 'Example website content'
+            website_content = {'markdown': markdown_content}
     except Exception as e:
-        print(f"Error getting website content: {str(e)}")
-        website_content = {'markdown': 'Example website content'}
+            markdown_content = 'Example website content'
+            website_content = {'markdown': markdown_content}
     
     # 2. Extract keywords from content
     print("\n--- Step 2: Extracting Keywords ---")
-    keywords = extract_keywords(website_content, top_k=10)
+    keywords = extract_keywords(markdown_content, top_k=10)
     
     # 3. Generate search prompts from keywords
     print("\n--- Step 3: Generating Search Prompts ---")
@@ -277,6 +248,15 @@ async def main(domain, max_pages=10, output_file="llm_ranking_report.pdf"):
     
     # 5. Generate PDF report
     print("\n--- Step 5: Generating PDF Report ---")
+
+    print("llm_results", llm_results)
+    print("domain", domain)
+    print("keywords", keywords)
+
+
+
+
+
     try:
         report_file = generate_pdf_report(llm_results, domain, keywords, output_file)
         print(f"\nAnalysis complete! Report saved to: {report_file}")
@@ -298,7 +278,6 @@ if __name__ == "__main__":
     import sys
     
     # Get domain from command line argument or use default
-    domain = sys.argv[1] if len(sys.argv) > 1 else "https://www.neosync.dev"
     
     print(f"Starting LLM ranking analysis for: {domain}")
     print("=" * 50)

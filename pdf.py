@@ -29,7 +29,7 @@ class PDF(FPDF):
 
 def generate_pdf_report(rankings, domain, keywords, output_file="llm_ranking_report.pdf"):
     """
-    Generate a comprehensive PDF report of LLM rankings.
+    Generate a very simple PDF report that avoids encoding issues.
     
     Args:
         rankings: Dictionary with ranking results by LLM and prompt
@@ -37,82 +37,126 @@ def generate_pdf_report(rankings, domain, keywords, output_file="llm_ranking_rep
         keywords: List of keywords that were extracted
         output_file: Output PDF filename
     """
-    # Create summary data for visualization
-    summary_data = summarize_rankings(rankings)
-    
-    # Generate visualizations
-    chart_file = generate_charts(summary_data, domain)
-    
-    # Clean domain for display
-    clean_domain = domain.replace("https://", "").replace("http://", "")
-    
-    # Create PDF
-    pdf = PDF()
-    pdf.alias_nb_pages()
+    pdf = FPDF()
     pdf.add_page()
+
+    clean_domain = domain.replace("https://", "").replace("http://", "")
     
     # Title
     pdf.set_font("Arial", "B", 16)
-    pdf.cell(0, 10, f"LLM Ranking Report for {clean_domain}", ln=True, align='C')
-    pdf.ln(5)
+    pdf.cell(0, 10, "LLM Ranking Report for {clean_domain}", ln=True, align='C')
     
-    # Date and summary
-    pdf.set_font("Arial", "", 10)
-    pdf.cell(0, 10, f"Report generated on {datetime.now().strftime('%Y-%m-%d %H:%M')}", ln=True)
-    
-    # Executive Summary
+    # Domain
     pdf.set_font("Arial", "B", 14)
-    pdf.cell(0, 10, "Executive Summary", ln=True)
+    clean_domain = domain.replace("https://", "").replace("http://", "")
+    pdf.cell(0, 10, f"Domain: {clean_domain}", ln=True)
+    
+    # Date
+    pdf.set_font("Arial", "", 10)
+    from datetime import datetime
+    pdf.cell(0, 10, f"Generated: {datetime.now().strftime('%Y-%m-%d')}", ln=True)
+    
+    # Keywords
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 10, "Keywords:", ln=True)
     pdf.set_font("Arial", "", 10)
     
-    # Add summary text
-    summary_text = generate_summary_text(summary_data, clean_domain)
-    pdf.multi_cell(0, 5, summary_text)
+    # Join keywords with commas to avoid encoding issues
+    keywords_text = ", ".join([k for k in keywords if isinstance(k, str)][:10])
+    pdf.multi_cell(0, 5, keywords_text)
     pdf.ln(5)
     
-    # Add visualization if available
-    if os.path.exists(chart_file):
-        pdf.image(chart_file, x=10, y=None, w=180)
-        pdf.ln(5)
-    
-    # Keywords Section
-    pdf.add_page()
-    pdf.set_font("Arial", "B", 14)
-    pdf.cell(0, 10, "Top Keywords", ln=True)
-    pdf.set_font("Arial", "", 10)
-    pdf.multi_cell(0, 5, "The following keywords were extracted from the domain and used to generate search queries:")
-    
-    for i, keyword in enumerate(keywords, 1):
-        pdf.cell(0, 8, f"{i}. {keyword}", ln=True)
-    pdf.ln(5)
-    
-    # Detailed Results by LLM
+    # Summary for each LLM
     for llm_name, prompts_data in rankings.items():
         pdf.add_page()
         pdf.set_font("Arial", "B", 14)
-        pdf.cell(0, 10, f"Detailed Results: {llm_name.upper()}", ln=True)
+        pdf.cell(0, 10, f"Results for {llm_name.upper()}", ln=True)
+        
+        # Count stats
+        total_queries = len(prompts_data)
+        mentioned = 0
+        top_ranked = 0
+        
+        for data in prompts_data.values():
+            rank = data.get("rank", "Error")
+            if rank != "Not mentioned" and "Error" not in str(rank):
+                mentioned += 1
+            if isinstance(rank, int) and rank <= 3:
+                top_ranked += 1
+        
+        # Show stats
         pdf.set_font("Arial", "", 10)
+        pdf.cell(0, 8, f"Total Queries: {total_queries}", ln=True)
+        pdf.cell(0, 8, f"Times Mentioned: {mentioned}", ln=True)
+        pdf.cell(0, 8, f"Top 3 Rankings: {top_ranked}", ln=True)
+        
+        mention_rate = (mentioned / total_queries * 100) if total_queries > 0 else 0
+        top_rate = (top_ranked / total_queries * 100) if total_queries > 0 else 0
+        
+        pdf.cell(0, 8, f"Mention Rate: {mention_rate:.1f}%", ln=True)
+        pdf.cell(0, 8, f"Top 3 Rate: {top_rate:.1f}%", ln=True)
+        pdf.ln(5)
+        
+        # List individual query results
+        pdf.set_font("Arial", "B", 12)
+        pdf.cell(0, 10, "Query Results:", ln=True)
         
         for prompt, data in prompts_data.items():
-            rank = data["rank"]
-            rank_display = f"#{rank}" if isinstance(rank, int) else rank
+            # Simplify the prompt to prevent encoding issues
+            safe_prompt = prompt[:50] + "..." if len(prompt) > 50 else prompt
+            safe_prompt = "".join(c for c in safe_prompt if c.isalnum() or c in " .,?!-")
             
-            pdf.set_font("Arial", "B", 11)
-            pdf.cell(0, 8, f"Query: \"{prompt}\"", ln=True)
+            rank = data.get("rank", "Error")
+            rank_display = f"#{rank}" if isinstance(rank, int) else str(rank)
+            
+            pdf.set_font("Arial", "B", 10)
+            pdf.multi_cell(0, 6, f"Query: {safe_prompt}")
+            
             pdf.set_font("Arial", "", 10)
-            pdf.cell(0, 8, f"Rank: {rank_display}", ln=True)
-            
-            # Add response excerpt
-            pdf.set_font("Arial", "I", 9)
-            pdf.multi_cell(0, 5, f"Response excerpt: {data['response'][:300]}...")
-            pdf.ln(5)
+            pdf.cell(0, 6, f"Rank: {rank_display}", ln=True)
+            pdf.ln(3)
     
-    # Clean up and save
-    pdf.output(output_file)
-    if os.path.exists(chart_file):
-        os.remove(chart_file)  # Remove temporary chart file
+    # Overall conclusion
+    pdf.add_page()
+    pdf.set_font("Arial", "B", 14)
+    pdf.cell(0, 10, "Overall Performance", ln=True)
     
-    return output_file
+    # Calculate overall performance
+    total_overall = 0
+    mentioned_overall = 0
+    top_ranked_overall = 0
+    
+    for llm_name, prompts_data in rankings.items():
+        total_overall += len(prompts_data)
+        
+        for data in prompts_data.values():
+            rank = data.get("rank", "Error")
+            if rank != "Not mentioned" and "Error" not in str(rank):
+                mentioned_overall += 1
+            if isinstance(rank, int) and rank <= 3:
+                top_ranked_overall += 1
+    
+    overall_mention_rate = (mentioned_overall / total_overall * 100) if total_overall > 0 else 0
+    overall_top_rate = (top_ranked_overall / total_overall * 100) if total_overall > 0 else 0
+    
+    pdf.set_font("Arial", "", 10)
+    pdf.cell(0, 8, f"Total Queries: {total_overall}", ln=True)
+    pdf.cell(0, 8, f"Overall Mention Rate: {overall_mention_rate:.1f}%", ln=True)
+    pdf.cell(0, 8, f"Overall Top 3 Rate: {overall_top_rate:.1f}%", ln=True)
+    
+    # Save the report
+    try:
+        pdf.output(output_file)
+        return output_file
+    except Exception as e:
+        # If we still have issues, try a different filename
+        alt_output = "simple_report.pdf"
+        try:
+            pdf.output(alt_output)
+            return alt_output
+        except Exception as e2:
+            print(f"Failed to generate PDF: {str(e2)}")
+            return None
 
 def summarize_rankings(rankings):
     """Generate summary statistics from rankings data."""
@@ -225,3 +269,55 @@ Recommendations:
 • Monitor competitors' performance and optimize content to maintain top rankings.
 """
     return text
+
+
+
+
+
+def create_simple_report(rankings, domain, keywords, output_file="simple_report.pdf"):
+    """Create a simplified PDF report that avoids Unicode issues"""
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # Title
+    pdf.set_font("Arial", "B", 16)
+    pdf.cell(0, 10, f"LLM Ranking Report", ln=True, align='C')
+    pdf.ln(5)
+    
+    # Domain
+    pdf.set_font("Arial", "B", 14)
+    clean_domain = domain.replace("https://", "").replace("http://", "")
+    pdf.cell(0, 10, f"Domain: {clean_domain}", ln=True)
+    
+    # Keywords
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 10, "Keywords:", ln=True)
+    pdf.set_font("Arial", "", 10)
+    
+    keywords_text = ", ".join(keywords[:10])
+    pdf.multi_cell(0, 5, keywords_text)
+    pdf.ln(5)
+    
+    # Results summary
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 10, "Results Summary:", ln=True)
+    
+    for llm_name, prompts_data in rankings.items():
+        pdf.set_font("Arial", "B", 11)
+        pdf.cell(0, 10, f"{llm_name.upper()}", ln=True)
+        
+        # Count mentions
+        total_queries = len(prompts_data)
+        mentioned = sum(1 for data in prompts_data.values() if data["rank"] != "Not mentioned" and "Error" not in data["rank"])
+        top_ranked = sum(1 for data in prompts_data.values() if isinstance(data["rank"], int) and data["rank"] <= 3)
+        
+        pdf.set_font("Arial", "", 10)
+        pdf.cell(0, 6, f"Total Queries: {total_queries}", ln=True)
+        pdf.cell(0, 6, f"Mentioned: {mentioned} ({int(mentioned/total_queries*100)}%)", ln=True)
+        pdf.cell(0, 6, f"Top 3 Rankings: {top_ranked} ({int(top_ranked/total_queries*100)}%)", ln=True)
+        pdf.ln(5)
+    
+    # Save the simplified report
+    output_file = "simple_" + output_file
+    pdf.output(output_file)
+    return output_file

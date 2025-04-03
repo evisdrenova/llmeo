@@ -14,12 +14,8 @@ def scrape_website(domain, max_pages=5):
     max_pages: limit the number of pages to crawl
     returns: concatenated text from all crawled pages
     """
-    scrape_result = app.scrape_url(
-    domain, 
-    params={'formats': ['markdown']}
-    )
-    print(scrape_result)
-    
-    return " ".join(scrape_result)
+    scrape_result = app.scrape_url(domain, params={'formats': ['markdown']})    
+
+    return scrape_result
 
     
